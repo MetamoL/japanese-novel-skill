@@ -2,11 +2,11 @@
 
 AI に日本語の小説を書かせるとき、一発で出る本文の質を上げる AI エージェント用のスキルです。Claude Code・Codex など、`SKILL.md` を読むエージェントで使えます。AI小説にありがちな「AIっぽさ」を、書く前に避けさせ、書いた後に点検させます。
 
-規則は、Web 小説の連載で AI の稿を何百か所も直して見つかった癖だけで作っています。
+規則は、日本語・中国語・英語で広く使われている小説向けスキルが共通して挙げる癖を、日本語の小説に合わせて書き直したものです。
 
-- オウム返し、重ねた比喩、目の光で語る感情、細切れの段落、頼んでいない設定の追加などを避けて書く
-- 書いた後に点検表と付属スクリプト `check_prose.py` で自分の稿を点検し、直す
-- 同じ筋で書き比べると、「た」の三連続 8→0、一文段落の連続 4→0、台詞の「……」 5→0、文あたりの読点 0.60→0.53
+- 主題を語り手に言わせる、「悟って受け入れて終わる」結末、決まった体の合図で書く感情、全員同じ声の台詞、気取った比喩、否定の言い直し、頼んでいない設定の追加などを避けて書く
+- 書いた後に「整合」「人物と読者」「文」の三回に分けて自分の稿を点検し、引用つきで直す。付属の `check_prose.py` が、決まり文句・体の合図・否定の言い直し・同じ主語の連続・文と段落の長さの揃いを数える
+- 作品方針や既刊の話があればそちらを優先し、AIが足した事実は作者に報告させる
 
 ## 導入
 
@@ -37,9 +37,9 @@ git clone https://github.com/MetamoL/japanese-novel-skill ~/.claude/skills/japan
 
 ## English
 
-An agent skill for Claude Code, Codex, and other agents that read `SKILL.md`, for writing Japanese fiction with AI. It makes the model avoid the habits that make AI-written Japanese novels read as AI: echoing the previous line, stacked metaphors, emotions told through the light in someone's eyes, chopped-up one-line paragraphs, and invented setting details nobody asked for. After writing, the model checks its own draft against a checklist and the bundled `check_prose.py`, then fixes it.
+An agent skill for Claude Code, Codex, and other agents that read `SKILL.md`, for writing Japanese fiction with AI. It makes the model avoid the habits that make AI-written Japanese novels read as AI, then check and fix its own draft with the bundled `check_prose.py`.
 
-Every rule comes from real fixes: hundreds of corrections to AI drafts of a serialized web novel. Writing the same plot with and without the skill: three sentences in a row ending in 「た」 8→0, runs of one-sentence paragraphs 4→0, 「……」 in dialogue 5→0, commas per sentence 0.60→0.53.
+The rules adapt, for Japanese fiction, the habits that popular fiction skills in Japanese, Chinese, and English agree on: the narrator stating the theme, endings where the hero realizes and accepts, emotions shown through stock body tells, every character speaking in the same voice, ornate metaphors, "not X, but Y" reframes, and invented facts. The model checks its draft in three passes (continuity, characters and reader, prose), quoting each problem it finds.
 
 The skill and its rules are in Japanese and it is meant for writing in Japanese. Install with the commands above: the plugin for Claude Code, `npx skills add MetamoL/japanese-novel-skill` for Codex and other agents, or clone this repository into your agent's skills folder. The checker needs Python 3. Formerly named fiction-prose-jp.
 

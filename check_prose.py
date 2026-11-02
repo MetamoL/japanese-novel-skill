@@ -1,85 +1,89 @@
 # -*- coding: utf-8 -*-
-"""日本語小説の本文から、数えられる癖の場所を出す。合否は決めない（直すかは文を読んで決める）。
+"""日本語小説の本文から、AIの小説に出やすい癖の場所を出す。合否は決めない（直すかは文を読んで決める）。
 
 使い方: python -X utf8 check_prose.py 本文.md [...]
+       python -X utf8 check_prose.py --outline 本文.md   # 地の文の段落の最初の文だけを並べる
 引数なしで実行すると自己テストを回す。
 """
 import re
+import statistics
 import sys
+
+sys.stdout.reconfigure(encoding='utf-8')  # Windows の端末でも文字化けしないように
 
 # 台詞・念話・見出し・場面区切りの行頭
 NON_NARRATION = tuple('「『<#◇◆＊*―')
-STOCK_PHRASES = ['沈黙が落ち', '張り詰めた空気', '息を呑', '静寂が', '胸が締め付け', '瞳の奥', '光が宿', '色が宿',
-                 '重たい何か', '何かが沈', '視線が刺さ', '視線が突き刺さ', '口元が緩', '肩をすくめ', '小さく笑', '苦笑']
-QUOTE = re.compile(r'^[「『]([^」』]*)[」』]')
+# 誰が書いても同じ形になる言い回し・物が人の動きをする言い回し
+STOCK_PHRASES = ['沈黙が落ち', '空気が凍', '張り詰めた空気', '静寂が', '視線が刺さ', '視線が突き刺さ', '時が止ま',
+                 '胸が締め付け', '胸を締め付け']
+# どの人物にも使える体の合図
+BODY_TELLS = ['拳を握', '唇を噛', '息を詰め', '息を呑', '喉が鳴', '目をそら', '目を逸ら', '奥歯を噛', '肩をすくめ',
+              '眉をひそめ', '口元が緩']
+# 何の感情か決めずに意味ありげにする書き方
+VAGUE_EMOTION = ['瞳の奥', '目の奥に', '目の奥の光', '光が宿', '色が宿', '重たい何か', '何かが沈', '何かが揺れ']
+# 具体が続かなければ消す強調語
+INTENSIFIERS = ['非常に', 'あまりにも', 'どこまでも', 'まさに', '深く', '確かに']
+# 否定してから言い直す型（「〜ではない。〜だ」「AでもBでもない」）
+NEGATION = re.compile(r'(ではな[いく]|じゃな[いく])[^。」]{0,3}[。、][^。」]{1,25}[だ。]|でもなければ|でもなく[^。]{1,15}でもな')
+SUBJECT = re.compile(r'^([^、。「」]{1,6}?)(は|が)')
 
 
 def sentences(line):
     return [s for s in re.findall(r'[^。！？]*[。！？]', line) if s.strip()]
 
 
+def cv(values):
+    """ばらつき（標準偏差÷平均）。小さいほど長さが揃っている。"""
+    return statistics.pstdev(values) / statistics.mean(values) if len(values) > 1 else 0.0
+
+
 def check(text):
-    """(種類, 行番号, 抜粋) の一覧と、読点の集計を返す。"""
-    lines = text.split('\n')
+    """(種類, 行番号, 抜粋) の一覧と、地の文の文・段落の長さを返す。"""
     found = []
-    ta_run, one_run, prev_quote = [], [], None
-    commas = sents = 0
+    sent_lens, para_lens, subj_run = [], [], []
 
-    def close_ta():
-        if len(ta_run) >= 3:
-            found.append(('た止め三連続', ta_run[0], f'{len(ta_run)}文（{ta_run[0]}〜{ta_run[-1]}行）'))
-        ta_run.clear()
+    def close_subj():
+        if len(subj_run) >= 3:
+            found.append(('同じ主語の文の連続', subj_run[0][0], f'「{subj_run[0][1]}」{len(subj_run)}文'))
+        subj_run.clear()
 
-    def close_one():
-        if len(one_run) >= 3:
-            found.append(('一文段落の連続', one_run[0], f'{len(one_run)}段落（{one_run[0]}〜{one_run[-1]}行）'))
-        one_run.clear()
-
-    for no, raw in enumerate(lines, 1):
+    for no, raw in enumerate(text.split('\n'), 1):
         line = raw.strip().lstrip('　')
         if not line:
             continue
-        ss = sentences(line) or [line]
-        sents += len(ss)
-        commas += line.count('、')
-        for phrase in STOCK_PHRASES:
-            if phrase in line:
-                found.append(('決まり文句', no, phrase))
-        m = QUOTE.match(line)
+        for kind, words in (('決まり文句', STOCK_PHRASES), ('体の合図', BODY_TELLS), ('目の光・何か', VAGUE_EMOTION),
+                            ('強調語', INTENSIFIERS)):
+            for w in words:
+                if w in line:
+                    found.append((kind, no, w))
+        m = NEGATION.search(line)
         if m:
-            inner = m.group(1)
-            if '…' in inner:
-                found.append(('台詞の「……」', no, inner[:20]))
-            head = re.split(r'[、。？！…\s]', inner, 1)[0].rstrip('かね')
-            if prev_quote and 1 < len(head) <= 8 and head in prev_quote:
-                found.append(('オウム返し候補', no, inner[:20]))
-            prev_quote = inner
-        else:
-            prev_quote = None
+            found.append(('否定の言い直し', no, m.group(0)[:20]))
         if line.startswith(NON_NARRATION):
-            # 台詞・区切りで地の文の連続は切れる
-            close_ta()
-            close_one()
+            close_subj()
             continue
-        for s in ss:
-            if s.endswith('た。'):
-                ta_run.append(no)
+        para_lens.append(len(line))
+        for s in sentences(line) or [line]:
+            sent_lens.append(len(s))
+            sm = SUBJECT.match(s.strip())
+            if sm and subj_run and sm.group(1) == subj_run[-1][1]:
+                subj_run.append((no, sm.group(1)))
             else:
-                close_ta()
-        if len(ss) == 1:
-            one_run.append(no)
-        else:
-            close_one()
-    close_ta()
-    close_one()
-    return found, commas, sents
+                close_subj()
+                if sm:
+                    subj_run.append((no, sm.group(1)))
+    close_subj()
+    return found, sent_lens, para_lens
 
 
 def report(path):
     with open(path, encoding='utf-8') as f:
-        found, commas, sents = check(f.read())
+        found, sent_lens, para_lens = check(f.read())
     print(f'== {path}')
-    print(f'読点 {commas} / 文 {sents} = {commas / max(sents, 1):.2f}（文あたり。前の話や下書きと比べて増えていたら見る）')
+    if sent_lens:
+        print(f'地の文：文 {len(sent_lens)}（平均 {statistics.mean(sent_lens):.0f}字・ばらつき {cv(sent_lens):.2f}）、'
+              f'段落 {len(para_lens)}（平均 {statistics.mean(para_lens):.0f}字・ばらつき {cv(para_lens):.2f}）'
+              '　※ばらつきが小さいほど長さが揃っている。前の話や人の書いた話と比べる')
     counts = {}
     for kind, _, _ in found:
         counts[kind] = counts.get(kind, 0) + 1
@@ -88,28 +92,40 @@ def report(path):
         print(f'  {no}行 {kind}: {excerpt}')
 
 
+def outline(path):
+    with open(path, encoding='utf-8') as f:
+        for raw in f:
+            line = raw.strip().lstrip('　')
+            if line and not line.startswith(NON_NARRATION):
+                print((sentences(line) or [line])[0])
+
+
 def _selftest():
     sample = '\n'.join([
-        '　彼は立った。窓を開けた。風が来た。',
-        '「三倍です」',
-        '「三倍か」',
-        '「断定はできませんが……」',
-        '　沈黙が落ちた。',
-        '　扉が開く。',
-        '　誰かが来る。',
+        '　彼は立った。彼は窓を開けた。彼は外を見た。',
+        '「行こう」',
+        '　沈黙が落ちた。彼女は拳を握った。',
+        '　その瞳の奥に光が宿る。',
+        '　それは雷ではない。もっと低い音だ。',
+        '　空は非常に青かった。',
     ])
-    found, commas, sents = check(sample)
+    found, sent_lens, para_lens = check(sample)
     kinds = [k for k, _, _ in found]
-    assert kinds.count('た止め三連続') == 1, found
-    assert 'オウム返し候補' in kinds, found
-    assert '台詞の「……」' in kinds, found
-    assert '決まり文句' in kinds, found
-    assert '一文段落の連続' in kinds, found  # 5〜7行
+    for k in ('同じ主語の文の連続', '決まり文句', '体の合図', '目の光・何か', '否定の言い直し', '強調語'):
+        assert k in kinds, (k, found)
+    assert len(para_lens) == 5 and len(sent_lens) == 9, (para_lens, sent_lens)
     print('selftest ok')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    if not args:
         _selftest()
-    for p in sys.argv[1:]:
-        report(p)
+    elif args[0] in ('-h', '--help'):
+        print(__doc__)
+    elif args[0] == '--outline':
+        for p in args[1:]:
+            outline(p)
+    else:
+        for p in args:
+            report(p)
